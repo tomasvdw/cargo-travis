@@ -13,7 +13,8 @@ pub struct CoverageOptions<'a> {
     pub compile_opts: CompileOptions<'a>,
     pub merge_dir: &'a Path,
     pub kcov_path: &'a Path,
-    pub merge_args: Vec<OsString> // TODO: Or &[str] ?
+    pub merge_args: Vec<OsString>, // TODO: Or &[str] ?
+    pub exclude_pattern: Option<String> 
 }
 
 pub fn run_coverage(ws: &Workspace, options: &CoverageOptions, test_args: &[String]) -> CargoResult<Option<CargoTestError>> {
@@ -60,14 +61,21 @@ pub fn run_coverage(ws: &Workspace, options: &CoverageOptions, test_args: &[Stri
         }
     }
 
-    // Let the user pass mergeargs
-    let mut mergeargs : Vec<OsString> = vec!["--merge".to_string().into(), options.merge_dir.as_os_str().to_os_string()];
-    mergeargs.extend(options.merge_args.iter().cloned());
-    mergeargs.extend(compilation.tests.iter().map(|&(_, _, ref exe)|
+    // Let the user pass kcovargs
+    let mut kcovargs : Vec<OsString> = vec!["--merge".to_string().into(), options.merge_dir.as_os_str().to_os_string()];
+    kcovargs.extend(options.merge_args.iter().cloned());
+    kcovargs.extend(compilation.tests.iter().map(|&(_, _, ref exe)|
         ws.target_dir().join("kcov-".to_string() + exe.file_name().unwrap().to_str().unwrap()).into_path_unlocked().into()
     ));
+
+    // Add exclude pattern if any
+    if let Some(ref exclude) = options.exclude_pattern {
+        let exclude = format!("--exclude-pattern={}", exclude);
+        kcovargs.push(OsString::from(exclude));
+    }
+
     let mut cmd = process(options.kcov_path.as_os_str().to_os_string());
-    cmd.args(&mergeargs);
+    cmd.args(&kcovargs);
     try!(config.shell().concise(|shell| {
         shell.status("Merging coverage", options.merge_dir.display().to_string())
     }));
